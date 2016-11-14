@@ -1,0 +1,150 @@
+
+#include "../Header/stdafx.h"
+#include "../Header/game_screen.h"
+#include "../Header/utility.h"
+
+using namespace std;
+
+
+bool GameScreen::initDXGraphics(HWND &hWnd) {
+
+	D3DDISPLAYMODE dmode;	// 動作環境のディスプレイモード
+	direct3D = Direct3DCreate9(D3D_SDK_VERSION);
+	direct3D->GetAdapterDisplayMode(D3DADAPTER_DEFAULT, &dmode);
+
+	// 構造体D3DPRESENT_PARAMETERSの値を設定
+	ZeroMemory(&d3dpp, sizeof(d3dpp));
+	d3dpp.BackBufferFormat = dmode.Format;
+	d3dpp.BackBufferCount = 1;					// ダブル、トリプルバッファとは？
+	d3dpp.SwapEffect = D3DSWAPEFFECT_DISCARD;	// ダブルバッファリング時のスワップ動作を指定
+	d3dpp.Windowed = TRUE;
+	d3dpp.EnableAutoDepthStencil = TRUE;
+	d3dpp.AutoDepthStencilFormat = D3DFMT_D24S8;
+
+	// http://www.wisdom.sakura.ne.jp/system/directx/dxg2.html
+	direct3D->CreateDevice(D3DADAPTER_DEFAULT, D3DDEVTYPE_HAL, hWnd,
+		D3DCREATE_SOFTWARE_VERTEXPROCESSING, &d3dpp, &d3dDevice);
+
+	successedInit = true;
+	fps = dmode.RefreshRate;
+	std::printf("dmode w, h, fRate, Format = %d, %d, %d, %d\n", dmode.Width, dmode.Height, dmode.RefreshRate, dmode.Format);
+	std::printf("adapter count = %d\n", direct3D->GetAdapterCount());
+	
+	gameComponent = new GameComponent(d3dDevice);
+	gameComponent->initGameObjects();
+	
+	return true;
+}
+
+void GameScreen::release() {
+	SAFE_RELEASE(direct3D);
+	SAFE_RELEASE(d3dDevice);
+}
+
+void GameScreen::changeWindowSize(int width, int height) {
+	if (!d3dDevice) return;
+
+	//if (sprite) sprite->onLostDevice();
+
+	d3dpp.BackBufferWidth = width;
+	d3dpp.BackBufferHeight = height;
+	d3dDevice->Reset(&d3dpp);
+	printf("changeWindowSize: w,h = %4d, %4d\n", d3dpp.BackBufferWidth, d3dpp.BackBufferHeight);
+	setRender(width, height);
+
+	//if (sprite) sprite->onResetDevice();
+}
+
+void GameScreen::setRender(int width, int height) {
+	D3DXMATRIX d3dm;
+
+	camera = D3DXVECTOR3(0, 3, -3);
+	// pEye:カメラの位置, pAt:カメラが注目する焦点, pUp:ワールド座標形のカメラの上部
+	D3DXMatrixLookAtLH(&d3dm, &camera, &D3DXVECTOR3(0, 0, 0), &D3DXVECTOR3(0, 1, 0));
+	d3dDevice->SetTransform(D3DTS_VIEW, &d3dm);
+
+	// fovy:視野角, aspect:アスペクト比, zn:最も近い面のZ座標, zf:最も遠い面のZ座標
+	FLOAT aspect = (FLOAT)width / (FLOAT)height;
+	D3DXMatrixPerspectiveFovLH(&d3dm, (FLOAT)D3DXToRadian(45.0), aspect, 1, 1000);
+	d3dDevice->SetTransform(D3DTS_PROJECTION, &d3dm);
+
+	d3dDevice->LightEnable(0, TRUE);
+	d3dDevice->SetRenderState(D3DRS_CULLMODE, D3DCULL_NONE);	// カリングモード: 背面の処理を排除する
+	d3dDevice->SetRenderState(D3DRS_LIGHTING, TRUE);
+	d3dDevice->SetRenderState(D3DRS_AMBIENT, 0x00FF8080);		// アンビエントライト
+}
+
+
+
+// フレームを更新した後 draw()を呼び出す
+void GameScreen::update() {
+	updateCount++;
+	gameComponent->update(fps);
+	draw();
+}
+
+
+void GameScreen::draw() {
+	d3dDevice->Clear(0, NULL, D3DCLEAR_TARGET | D3DCLEAR_ZBUFFER, D3DCOLOR_XRGB(0x33, 0x33, 0x33), 1.0, 0);
+	d3dDevice->BeginScene();	// バッファへの描画開始
+
+	gameComponent->draw();
+
+	d3dDevice->EndScene();		// バッファへの描画終了 
+	d3dDevice->Present(NULL, NULL, NULL, NULL);
+	//ValidateRect(hWnd, NULL);
+}
+
+
+void GameScreen::receiveMouseInput(UINT msg, WPARAM wp, int x, int y) {
+	//cout << "mouse input: " << input << endl;
+	//printf("msg = %d, wp = %d, (x, y) = (%d, %d)\n", msg, wp, x, y);
+	
+	switch (msg)
+	{
+	case WM_LBUTTONDOWN:
+		mouse_ldown = true;
+		mouse_from.x = x;
+		mouse_from.y = y;
+		break;
+	case WM_LBUTTONUP:
+		mouse_ldown = false;
+		break;
+	case WM_RBUTTONDOWN:
+		break;
+	case WM_RBUTTONUP:
+		break;
+	case WM_MOUSEMOVE:
+		changeCameraPoint(wp, x, y);
+		break;
+	}
+	gameComponent->receiveMouseInput(msg, wp, x, y);
+}
+
+void GameScreen::changeCameraPoint(int wp, int mouse_x, int mouse_y) {
+
+	if (!mouse_ldown) return;
+	
+	D3DXMATRIX m;
+	D3DXMATRIX	d3dm;
+
+	if (abs(mouse_from.x - mouse_x) < abs(mouse_from.y - mouse_y)) {
+		if ((wp & MK_SHIFT) || (wp & MK_CONTROL)) {
+			camera *= (mouse_from.y - mouse_y > 0) ? 1.05f : 0.95f;
+		}
+		else {
+			camera.y += (mouse_from.y - mouse_y > 0) ? 0.1f : -0.1f;
+		}
+	}
+	else {
+		D3DXMatrixRotationY(&d3dm, D3DXToRadian((mouse_from.x - mouse_x > 0) ? 3 : -3));
+		camera = multiple(camera, d3dm);
+	}
+
+
+	D3DXMatrixLookAtLH(&d3dm, &camera, &D3DXVECTOR3( 0, 0, 0 ), &D3DXVECTOR3(0, 1, 0));
+	d3dDevice->SetTransform(D3DTS_VIEW, &d3dm);
+
+	mouse_from.x = mouse_x;
+	mouse_from.y = mouse_y;
+}
