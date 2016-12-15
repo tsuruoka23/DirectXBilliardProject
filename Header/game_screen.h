@@ -2,10 +2,10 @@
 #include "stdafx.h"
 #include "game_object.h"
 #include "billiard.h"
-#include "game_component.h"
+#include "game_scene.h"
+#include "game_ui.h"
 
-#define PI 3.14
-
+class GameScene;
 
 // ゲーム画面の更新や描画を行うクラス
 // デバイスを管理する
@@ -15,9 +15,10 @@ private:
 	IDirect3D9		 *direct3D;
 	IDirect3DDevice9 *d3dDevice;
 	D3DPRESENT_PARAMETERS d3dpp; // デバイスの状態を示す構造体
-
 	D3DXVECTOR3 camera;
-	GameComponent *gameComponent;
+	
+	GameScene *activeScene;		// 現在表示中のシーン
+	GameScene *nonActiveScene;	// 破棄してよいシーン
 	
 	UINT32 updateCount;	// updateが呼び出された回数
 	UINT32 fps;
@@ -29,21 +30,28 @@ private:
 public:
 
 	GameScreen() {
+		activeScene = NULL;
+		nonActiveScene = NULL;
 		successedInit = false;
 	};
 
 	~GameScreen() {
-		release();
+		SAFE_RELEASE(direct3D);
+		SAFE_RELEASE(d3dDevice);
 	}
 
-	bool initDXGraphics(HWND &hWnd);
-	void release();
-	void changeWindowSize(int width, int height);
-	void setRender(int width, int height);
-	void receiveMouseInput(UINT msg, WPARAM wp, int x, int y);
-	void changeCameraPoint(int wp, int mouse_x, int mouse_y);
+	UINT32 getFps() { return fps; }
 
+	bool initDXGraphics(HWND &hWnd);
+	void initRender(int width, int height);
+	void changeWindowSize(int width, int height);
+	void receiveMouseInput(UINT msg, WPARAM wp, int x, int y);
+
+	void moveCamera(int wp, int mouse_x, int mouse_y);
+	void changeCameraPoint(const int cameraNo);
+	void switchScene(const int sceneId);
 	void update();
+
 private:
 	void draw();
 };

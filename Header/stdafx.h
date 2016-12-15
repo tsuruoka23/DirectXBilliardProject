@@ -20,5 +20,6 @@
 #define SAFE_DELARRAY(p)    { if (p) { delete[] (p);    (p)=NULL; } }
 #define SAFE_DELDC(p)       { if (p) { DeleteDC (p);   (p)=NULL; } }
 
-#define PI 3.14
+#define PI 3.141592
+//#define PI 3.141592
 #define CALC_ERROR 0.000001
